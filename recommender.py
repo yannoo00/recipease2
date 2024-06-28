@@ -17,12 +17,9 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-import logging
 
-# 로깅 설정
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 # Set OpenAI API key
-os.environ["OPENAI_API_KEY"] = 'sk-proj-UN874QF8oBesy5d8YFA6T3BlbkFJpf2jAV3jC5gVlvvJc90g'
+os.environ["OPENAI_API_KEY"] = 'sk-proj-TGtzBUB3cgbkM6sNnJEZT3BlbkFJ17krPTzPuSefu4lvoJmy'
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
 # Parameters
@@ -44,7 +41,7 @@ PERSONA = """
   요리 시간:
 """
 
-def load_model_and_embeddings(file_path='model_embeddings.pkl'):
+def load_model_and_embeddings(file_path='model_embeddings_all.pkl'):
     """Load BERT model and embeddings from a pickle file."""
     with open(file_path, 'rb') as f:
         model, embeddings = pickle.load(f)
@@ -62,14 +59,32 @@ def recommend_recipe(user_input, model, data_embeddings, tokenizer, file_path='R
     """Recommend recipes based on user input using BERT embeddings."""
     data = pd.read_csv(file_path, delimiter='\t', header=None, names=["combined_features"])
     user_embedding = get_bert_embeddings([user_input], tokenizer, model)
+    user_embedding = user_embedding.reshape(1, -1)  # 차원 조정 추가
+
+    print(f"data_embeddings shape: {data_embeddings.shape}")  # 차원 확인 코드 추가
+    if len(data_embeddings.shape) == 3:
+        data_embeddings = data_embeddings.reshape(data_embeddings.shape[0], -1)  # 차원 조정 코드 추가
+        print(f"Reshaped data_embeddings shape: {data_embeddings.shape}")  # 차원 조정 후 확인 코드 추가
+
     sim_scores = cosine_similarity(user_embedding, data_embeddings).flatten()
     sim_indices = sim_scores.argsort()[-5:][::-1]
     recommendations = [(data.iloc[i]['combined_features'], sim_scores[i]) for i in sim_indices]
+
+    print("Selected Top 5 Recipes:")
+    for i, (recipe, score) in enumerate(recommendations, start=1):
+        print(f"Recipe {i}:")
+        print(f"Similarity Score: {score}")
+        print(recipe)
+        print("-" * 20)    
+    
     response = ""
     for recipe, score in recommendations:
         response += f"Similarity Score: {score}\n"
         response += f"{recipe}\n"
         response += "-" * 20 + "\n"
+
+    if recommendations[0][1] <= 0.5:
+        return None
     return response
 
 def generate_response(persona, user_input, recommendation_response):
@@ -84,65 +99,52 @@ def generate_response(persona, user_input, recommendation_response):
     message = response.choices[0].message.content
     return message
 
-
 # Function to search for ingredient on Coupang
 def search_ingredient_on_coupang(ingredient):
-    encoded_keyword = urllib.parse.quote(ingredient)
 
-    # 검색 결과 페이지 URL
-    main_url = f"https://www.coupang.com/np/search?component=&q={encoded_keyword}"
+    options = webdriver.ChromeOptions()
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
+    options.add_experimental_option("prefs", {"prfile.managed_default_content_setting.images": 2})
 
-    # 헤더 설정
-    header = {
-        'Host': 'www.coupang.com',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:76.0) Gecko/20100101 Firefox/76.0',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ko-KR,ko;q=0.8,en-US;q=0.5,en;q=0.3',
-    }
+    driver = webdriver.Chrome(options=options)
+    main_url = f"https://www.kurly.com/search?sword={ingredient}"
 
     try:
         # 검색 결과 페이지 요청
-        response = requests.get(main_url, headers=header)
-        response.raise_for_status()
-        html = response.text
-        soup = BeautifulSoup(html, 'html.parser')
-
+        driver.get(main_url)
+        time.sleep(5)
         # 첫 번째 상품 링크 가져오기
-        link = soup.select_one("a.search-product-link")
-        if not link:
-            raise Exception("검색 결과가 없습니다.")
 
-        # 상품 페이지 URL
-        sub_url = "https://www.coupang.com" + link.attrs['href']
-
-        # 상품 페이지 요청
-        response = requests.get(sub_url, headers=header)
-        response.raise_for_status()
-        html = response.text
-        soup = BeautifulSoup(html, 'html.parser')
+        element=driver.find_element(By.XPATH,'/html/body/div[1]/div[3]/div/main/div[2]/div[2]/div[2]/a[1]')
+        sub_url=element.get_attribute('href')
 
         # 상품명
-        product_name = soup.select_one("h2.prod-buy-header__title").text.strip()
+        product=driver.find_element(By.XPATH,'/html/body/div[1]/div[3]/div/main/div[2]/div[2]/div[2]/a[1]/div[3]/span[2]').text
 
         # 가격
-        product_price = soup.select_one("span.total-price > strong").text.strip()
+        price=driver.find_element(By.XPATH,'/html/body/div[1]/div[3]/div/main/div[2]/div[2]/div[2]/a[1]/div[3]/div[1]/div/span/span[1]').text
 
         # 결과를 딕셔너리로 반환
         return {
             "ingredient": ingredient,
             "url": sub_url,
-            "product_name": product_name,
-            "product_price": product_price
+            "product_name": product,
+            "product_price": str(price)+' 원'
         }
 
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         return {
             "ingredient": ingredient,
-            "error": f"HTTP 요청 중 오류 발생: {e}"
+            "error": f"오류 발생"
         }
-    except Exception as e:
-        logging.error(f"Error occurred during crawling: {str(e)}")
-        return {'dish_name': '', 'nutrients': []}
+
+    finally:
+        driver.quit()
 
 def price(recommendations):
     def extract_ingredients(text):
@@ -159,7 +161,7 @@ def price(recommendations):
         # Extract ingredients from the detailed text
         ingredients_list = extract_ingredients(detailed_text)
         # Search for each ingredient in Coupang
-        results = [search_ingredient_on_coupang(ingredient) for ingredient in ingredients_list[:-1]]
+        results = [search_ingredient_on_coupang(ingredient.split()[0]) for ingredient in ingredients_list[:3]]
 
     return results
 
@@ -201,6 +203,7 @@ def youtube_crawl(recommendations):
   title_xpath = '//*[@id="video-title"]'
   viewcnt_xpath = '//*[@id="metadata-line"]/span[1]'
   period_xpath = '//*[@id="metadata-line"]/span[2]'
+#  url_xpath = '//*[@id="video-title"]'
 
   # 요소 찾기
   image = browser.find_element(By.XPATH, img_xpath)
@@ -209,16 +212,26 @@ def youtube_crawl(recommendations):
   title = browser.find_element(By.XPATH, title_xpath)
   view = browser.find_element(By.XPATH, viewcnt_xpath)
   period = browser.find_element(By.XPATH, period_xpath)
+  video_element = browser.find_element(By.CSS_SELECTOR, "a#video-title")
+  video_url = video_element.get_attribute('href')
 
   title_list = []
   view_list = []
   periods_list = []
+  urls_list = []
 
   title_list.append(title.text)
   view_list.append(view.text)
   periods_list.append(period.text)
+  urls_list.append(video_url)
 
-  result={'Title': title.text, 'Views': view.text, 'Period': period.text, 'Image URL': img_url}
+  result = {
+    'Title': title.text,
+    'Views': view.text,
+    'Period': period.text,
+    'Image URL': img_url,
+    'Video URL': video_url
+    }
 
   # 브라우저 종료
   browser.quit()
@@ -235,11 +248,7 @@ def setup_driver():
 
     return webdriver.Chrome(options=chrome_options)
 
-import logging
-
 def search_nutrient(input_value):
-    logging.info(f"Searching nutrient for: {input_value}")
-    
     def extract_nutrient_data(driver):
         nutrient_data = []
         for i in range(1, 6):
@@ -268,7 +277,7 @@ def search_nutrient(input_value):
 
                 nutrient_data.append(nutrient_info)
             except Exception as e:
-                logging.error(f"Error extracting nutrient {i}: {str(e)}")
+                print(f"영양성분 추출 오류")
 
         return nutrient_data
 
@@ -279,35 +288,25 @@ def search_nutrient(input_value):
         driver.get("https://various.foodsafetykorea.go.kr/nutrient/")
         search_box = driver.find_element(By.ID, "searchText")
         search_box.send_keys(input_value)
-        logging.info(f"Searching for: {input_value}")
 
         search_button = driver.find_element(By.CLASS_NAME, "btn")
         search_button.click()
-        logging.info("Search button clicked")
 
         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '//*[@id="simpleDataBody"]/tr[1]/td[3]/a/em')))
-        logging.info("Search results loaded")
 
         dish_name_element = driver.find_element(By.XPATH, '//*[@id="simpleDataBody"]/tr[1]/td[3]/a/em')
         dish_name = dish_name_element.text
-        logging.info(f"Dish name: {dish_name}")
 
         first_result = driver.find_element(By.CSS_SELECTOR, '#simpleDataBody > tr:nth-child(1) > td:nth-child(3) > a:nth-child(1)')
         first_result.click()
-        logging.info("First result clicked")
 
         WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.XPATH, '//*[@id="content"]/div[5]/div[1]/div/div[1]')))
-        logging.info("Nutrient data loaded")
 
         nutrient_data = extract_nutrient_data(driver)
-
-        if not nutrient_data:
-            raise Exception("Nutrient data is empty")
 
         return {'dish_name': dish_name, 'nutrients': nutrient_data}
 
     except Exception as e:
-        logging.error(f"Error occurred during crawling: {str(e)}")
         return f"요청하는 데이터를 찾지 못하거나 오류가 발생함."
 
     finally:
@@ -327,6 +326,9 @@ def main():
         if user_input.lower() == 'exit':
             break
         recommendation_response = recommend_recipe(user_input, loaded_model, loaded_embeddings, tokenizer)
+        if recommendation_response is None: ###이 부분 todo
+            print(None)
+            continue
         chatbot_response = generate_response(PERSONA, user_input, recommendation_response)
         print(recommendation_response)
         print(chatbot_response)

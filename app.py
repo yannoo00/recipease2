@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 from chatbot import chatbot_bp
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
 app.register_blueprint(chatbot_bp)
 
 @app.route('/')

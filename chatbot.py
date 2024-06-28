@@ -3,7 +3,7 @@ from transformers import BertTokenizer
 from recommender import load_model_and_embeddings, recommend_recipe, generate_response, price, youtube_crawl, search_nutrient
 
 chatbot_bp = Blueprint('chatbot', __name__)
-loaded_model, loaded_embeddings = load_model_and_embeddings('model_embeddings.pkl')
+loaded_model, loaded_embeddings = load_model_and_embeddings('model_embeddings_all.pkl')
 tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased')
 
 PERSONA = """
@@ -21,23 +21,37 @@ PERSONA = """
   요리 시간:
 """
 
-@chatbot_bp.route('/recommend', methods=['POST'])
+@chatbot_bp.route('/chatbot', methods=['POST'])
 def process_user_input():
     try:
         user_input = request.json['message']
+        print(f"User input: {user_input}")  # 로그 추가
         recommendation_response = recommend_recipe(user_input, loaded_model, loaded_embeddings, tokenizer)
-        chatbot_response = generate_response(PERSONA, user_input, recommendation_response)
-        
-        nutrient_info = search_nutrient(chatbot_response)
-        youtube_info = youtube_crawl(chatbot_response)
-        price_info = price(chatbot_response)
 
-        return jsonify({
+        if recommendation_response is None:
+            return jsonify({
+                'chatbot_response': "결과를 찾지 못했습니다. 더 자세한 입력을 부탁드립니다.",
+                'price_results': None,
+                'youtube_result': None,
+                'nutrient_data': None
+            })
+
+        chatbot_response = generate_response(PERSONA, user_input, recommendation_response)
+        price_results = price(chatbot_response)
+        youtube_result = youtube_crawl(chatbot_response)
+        nutrient_data = search_nutrient(chatbot_response)
+
+        response_data = {
+            'recommendation_response': recommendation_response,
             'chatbot_response': chatbot_response,
-            'nutrient_info': nutrient_info,
-            'youtube_info': youtube_info,
-            'price_info': price_info
-        })
+            'price_results': price_results,
+            'youtube_result': youtube_result,
+            'nutrient_data': nutrient_data
+        }
+        print(f"Response data: {response_data}")  # 로그 추가
+
+        return jsonify(response_data)
     except Exception as e:
         error_message = f"오류 발생: {str(e)}"
+        print(error_message)  # 로그 추가
         return jsonify({'error': error_message}), 500
