@@ -18,8 +18,12 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from config import OPENAI_API_KEY
+import boto3
+import io
+
 
 # Set OpenAI API key
+#openai.api_key = os.environ["OPENAI_API_KEY"]
 openai.api_key = OPENAI_API_KEY
 
 # Parameters
@@ -41,11 +45,13 @@ PERSONA = """
   요리 시간:
 """
 
-def load_model_and_embeddings(file_path='model_embeddings_all.pkl'):
-    """Load BERT model and embeddings from a pickle file."""
-    with open(file_path, 'rb') as f:
-        model, embeddings = pickle.load(f)
-    print(f"Model and embeddings loaded from {file_path}")
+def load_model_and_embeddings(bucket_name, file_key):
+    """Load BERT model and embeddings from an S3 bucket."""
+    s3 = boto3.client('s3')
+    obj = s3.get_object(Bucket=bucket_name, Key=file_key)
+    pkl_data = io.BytesIO(obj['Body'].read())
+    model, embeddings = pickle.load(pkl_data)
+    print(f"Model and embeddings loaded from S3: {bucket_name}/{file_key}")
     return model, embeddings
 
 def get_bert_embeddings(text_list, tokenizer, model):
@@ -315,7 +321,9 @@ def search_nutrient(input_value):
 def main():
     """Main function to run the recipe recommendation system."""
     # Load the BERT model and embeddings
-    loaded_model, loaded_embeddings = load_model_and_embeddings('model_embeddings.pkl')
+    bucket_name = 'embededrecipe'
+    file_key = 'model_embeddings_all.pkl'
+    loaded_model, loaded_embeddings = load_model_and_embeddings(bucket_name, file_key)
 
     # Initialize BERT tokenizer
     tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased')
