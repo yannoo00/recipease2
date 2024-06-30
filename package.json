@@ -1,0 +1,5 @@
+{
+  "devDependencies": {
+    "netlify-lm-plugin": "^1.0.0"
+  }
+}
