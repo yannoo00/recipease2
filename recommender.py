@@ -17,10 +17,12 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from config import OPENAI_API_KEY
+#from config import OPENAI_API_KEY
 
 # Set OpenAI API key
-openai.api_key = OPENAI_API_KEY
+os.environ["OPENAI_API_KEY"] = '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'
+openai.api_key = os.environ["OPENAI_API_KEY"]
+#openai.api_key = OPENAI_API_KEY
 
 # Parameters
 MODEL_NAME = "gpt-4"

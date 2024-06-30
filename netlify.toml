@@ -1,0 +1,6 @@
+[build]
+  command = "python app.py"
+  publish = "."
+
+[build.environment]
+  PYTHON_VERSION = "3.12.2"
