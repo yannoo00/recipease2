@@ -1,0 +1,11 @@
+[[plugins]]
+  package = "netlify-lm-plugin"
+
+[build]
+  publish = "build"
+  command = "python build.py"
+
+[[build.processing.assets]]
+  matches = "**/*"
+  [build.processing.assets.large_media]
+    threshold = 5242880  # 5MB 이상의 파일은 Large Media로 처리
