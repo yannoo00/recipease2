@@ -22,7 +22,6 @@ import logging
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 # Set OpenAI API key
-os.environ["OPENAI_API_KEY"] = 'sk-proj-UN874QF8oBesy5d8YFA6T3BlbkFJpf2jAV3jC5gVlvvJc90g'
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
 # Parameters
